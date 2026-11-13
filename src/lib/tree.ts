@@ -4,7 +4,7 @@ import {
   isNotStartedStatus,
   isStartedStatus,
 } from './statuses'
-import type { Aggregate, PlannerState, StatusId, Task } from './types'
+import type { Aggregate, DropPosition, PlannerState, StatusId, Task } from './types'
 
 export interface RemovedSubtree {
   rootId: string
@@ -373,6 +373,87 @@ export function setTaskStatus(state: PlannerState, id: string, status: StatusId)
   task.status = status
   task.updatedAt = Date.now()
   return true
+}
+
+
+export function isDescendantOf(
+  state: PlannerState,
+  ancestorId: string,
+  taskId: string,
+): boolean {
+  if (ancestorId === taskId) return false
+  return collectSubtreeIds(state, ancestorId).includes(taskId)
+}
+
+export function moveTaskToParent(
+  state: PlannerState,
+  draggedId: string,
+  newParentId: string | null,
+  index: number,
+): boolean {
+  const dragged = state.tasks[draggedId]
+  if (!dragged) return false
+  const validParentId =
+    newParentId && state.tasks[newParentId] ? newParentId : null
+  if (validParentId === draggedId) return false
+  if (validParentId && isDescendantOf(state, draggedId, validParentId)) return false
+
+  const sourceList = getSiblingIds(state, draggedId)
+  const targetList = validParentId
+    ? state.tasks[validParentId].childIds
+    : state.rootIds
+  const sourceIndex = sourceList.indexOf(draggedId)
+  if (sourceIndex < 0) return false
+
+  const previousParentId = dragged.parentId
+  let insertIndex = Math.max(0, Math.min(index, targetList.length))
+  if (sourceList === targetList && sourceIndex < insertIndex) insertIndex -= 1
+
+  sourceList.splice(sourceIndex, 1)
+  targetList.splice(insertIndex, 0, draggedId)
+  dragged.parentId = validParentId
+  dragged.updatedAt = Date.now()
+
+  if (previousParentId) {
+    const previousParent = state.tasks[previousParentId]
+    if (previousParent) previousParent.updatedAt = Date.now()
+  }
+  if (validParentId) {
+    const parent = state.tasks[validParentId]
+    parent.collapsed = false
+    parent.updatedAt = Date.now()
+  }
+  return true
+}
+
+export function moveTaskRelative(
+  state: PlannerState,
+  draggedId: string,
+  targetId: string,
+  position: DropPosition,
+): boolean {
+  if (draggedId === targetId) return false
+  const dragged = state.tasks[draggedId]
+  const target = state.tasks[targetId]
+  if (!dragged || !target) return false
+  if (isDescendantOf(state, draggedId, targetId)) return false
+
+  if (position === 'inside') {
+    return moveTaskToParent(state, draggedId, targetId, target.childIds.length)
+  }
+
+  const newParentId = target.parentId
+  const targetList = newParentId
+    ? state.tasks[newParentId]?.childIds ?? []
+    : state.rootIds
+  const targetIndex = targetList.indexOf(targetId)
+  if (targetIndex < 0) return false
+  return moveTaskToParent(
+    state,
+    draggedId,
+    newParentId,
+    position === 'before' ? targetIndex : targetIndex + 1,
+  )
 }
 
 export function toggleCollapse(state: PlannerState, id: string): void {

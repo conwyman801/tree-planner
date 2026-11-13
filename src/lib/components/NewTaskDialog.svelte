@@ -13,9 +13,25 @@
   let parent = $derived(
     request?.parentId ? planner.state.tasks[request.parentId] : undefined,
   )
+  let viewportHeight = $state<number | null>(null)
+  let viewportOffsetTop = $state(0)
 
   onMount(() => {
+    const viewport = window.visualViewport
+    const updateViewport = () => {
+      viewportHeight = viewport?.height ?? window.innerHeight
+      viewportOffsetTop = viewport?.offsetTop ?? 0
+    }
+
+    updateViewport()
+    viewport?.addEventListener('resize', updateViewport)
+    viewport?.addEventListener('scroll', updateViewport)
     titleInput?.focus()
+
+    return () => {
+      viewport?.removeEventListener('resize', updateViewport)
+      viewport?.removeEventListener('scroll', updateViewport)
+    }
   })
 
   function submit() {
@@ -41,6 +57,7 @@
 <div
   class="dialog-backdrop"
   role="presentation"
+  style="--vv-height: {viewportHeight ? `${viewportHeight}px` : '100dvh'}; --vv-top: {viewportOffsetTop}px;"
   onclick={(event) => {
     if (event.target === event.currentTarget) cancel()
   }}
@@ -114,7 +131,10 @@
 <style>
   .dialog-backdrop {
     position: fixed;
-    inset: 0;
+    top: var(--vv-top, 0px);
+    left: 0;
+    right: 0;
+    height: var(--vv-height, 100dvh);
     z-index: 80;
     display: grid;
     place-items: center;
@@ -126,7 +146,7 @@
 
   .dialog {
     width: min(480px, 100%);
-    max-height: calc(100dvh - 40px);
+    max-height: calc(var(--vv-height, 100dvh) - 40px);
     overflow-y: auto;
     overscroll-behavior: contain;
     background: var(--surface);
@@ -191,14 +211,22 @@
 
   @media (max-width: 620px) {
     .dialog-backdrop {
-      padding: 12px;
-      align-items: end;
+      padding: 10px;
+      place-items: start center;
     }
 
     .dialog {
       width: 100%;
-      max-height: calc(100dvh - 24px);
-      border-radius: 16px 16px 12px 12px;
+      max-height: calc(var(--vv-height, 100dvh) - 20px);
+      border-radius: 14px;
+    }
+
+    .dialog-actions {
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      background: var(--surface);
+      box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.06);
     }
   }
 

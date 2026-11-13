@@ -2,8 +2,9 @@
   import { onDestroy, onMount } from 'svelte'
   import { computeLayout } from '../layout'
   import { planner } from '../store.svelte'
-  import { computeAggregates, getAncestorIds, getBreadcrumb } from '../tree'
+  import { computeAggregates, getAncestorIds, getBreadcrumb, isDescendantOf } from '../tree'
   import { STATUS_BY_ID } from '../statuses'
+  import type { DropPosition } from '../types'
   import DragGhost from './DragGhost.svelte'
   import TaskNode from './TaskNode.svelte'
 
@@ -53,7 +54,7 @@
 
   let draggingId = $state<string | null>(null)
   let dropTargetId = $state<string | null>(null)
-  let dropPosition = $state<'before' | 'after'>('before')
+  let dropPosition = $state<DropPosition>('before')
   let ghostX = $state(0)
   let ghostY = $state(0)
   let pendingNodeDrag: PendingNodeDrag | null = null
@@ -286,9 +287,12 @@
     return nodeElement && id ? { id, element: nodeElement } : null
   }
 
-  function dropPositionFor(element: HTMLElement, clientY: number): 'before' | 'after' {
+  function dropPositionFor(element: HTMLElement, clientY: number): DropPosition {
     const rect = element.getBoundingClientRect()
-    return clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+    const relative = (clientY - rect.top) / Math.max(1, rect.height)
+    if (relative < 0.3) return 'before'
+    if (relative > 0.7) return 'after'
+    return 'inside'
   }
 
   function autoPanTree(clientX: number, clientY: number) {
@@ -311,7 +315,11 @@
     }
     const dragged = planner.state.tasks[draggingId]
     const target = planner.state.tasks[hit.id]
-    if (!dragged || !target || dragged.parentId !== target.parentId) {
+    if (
+      !dragged ||
+      !target ||
+      isDescendantOf(planner.state, draggingId, hit.id)
+    ) {
       dropTargetId = null
       return
     }
@@ -371,8 +379,12 @@
         if (hit && hit.id !== taskIdToMove) {
           const dragged = planner.state.tasks[taskIdToMove]
           const target = planner.state.tasks[hit.id]
-          if (dragged && target && dragged.parentId === target.parentId) {
-            planner.moveSiblingRelative(
+          if (
+            dragged &&
+            target &&
+            !isDescendantOf(planner.state, taskIdToMove, hit.id)
+          ) {
+            planner.moveTaskRelative(
               taskIdToMove,
               hit.id,
               dropPositionFor(hit.element, upEvent.clientY),
@@ -457,6 +469,7 @@
           class:dragging={draggingId === node.id}
           class:drop-before={dropTargetId === node.id && dropPosition === 'before'}
           class:drop-after={dropTargetId === node.id && dropPosition === 'after'}
+          class:drop-inside={dropTargetId === node.id && dropPosition === 'inside'}
           style="left: {node.x}px; top: {node.y}px; width: {node.width}px; height: {node.height}px;"
         >
           <TaskNode
@@ -505,10 +518,10 @@
   </div>
 
   <div class="tree-hint desktop-hint">
-    Drag the canvas to pan · Scroll to zoom · Alt+↑/↓ to reorder siblings
+    Drag handles to reorder or nest · Scroll to zoom · Alt+↑/↓ reorders siblings
   </div>
   <div class="tree-hint touch-hint">
-    Drag the canvas to pan · Pinch to zoom · Use the grip to reorder
+    Drag handles to reorder or nest · Pinch to zoom
   </div>
 </div>
 
@@ -592,6 +605,12 @@
 
   .tree-node.drop-after::after {
     bottom: -6px;
+  }
+
+  .tree-node.drop-inside {
+    border-radius: 12px;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.55);
+    background: rgba(79, 70, 229, 0.08);
   }
 
   .tree-toolbar {
