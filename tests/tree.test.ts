@@ -11,6 +11,7 @@ import {
   insertTask,
   moveSiblingByOffset,
   moveSiblingRelative,
+  moveTaskRelative,
   removeSubtree,
   restoreSubtree,
 } from '../src/lib/tree'
@@ -179,6 +180,53 @@ describe('sibling ordering', () => {
     expect(state.tasks['feature'].childIds).toEqual(['story-b', 'story-a'])
     expect(moveSiblingByOffset(state, 'story-b', -1)).toBe(false)
     expect(moveSiblingByOffset(state, 'story-a', 1)).toBe(false)
+  })
+})
+
+
+describe('reparenting', () => {
+  it('moves a task inside another task', () => {
+    const state = setup()
+    expect(moveTaskRelative(state, 'story-b', 'other-root', 'inside')).toBe(true)
+
+    expect(state.tasks['story-b'].parentId).toBe('other-root')
+    expect(state.tasks['feature'].childIds).toEqual(['story-a'])
+    expect(state.tasks['other-root'].childIds).toEqual(['story-b'])
+  })
+
+  it('moves a task before or after a task in another parent', () => {
+    const state = setup()
+    expect(moveTaskRelative(state, 'story-b', 'other-root', 'before')).toBe(true)
+
+    expect(state.tasks['story-b'].parentId).toBe(null)
+    expect(state.rootIds).toEqual(['epic', 'story-b', 'other-root'])
+    expect(state.tasks['feature'].childIds).toEqual(['story-a'])
+
+    expect(moveTaskRelative(state, 'story-b', 'story-a', 'after')).toBe(true)
+    expect(state.tasks['story-b'].parentId).toBe('feature')
+    expect(state.tasks['feature'].childIds).toEqual(['story-a', 'story-b'])
+  })
+
+  it('appends a task when dropped inside its current parent', () => {
+    const state = setup()
+    expect(moveTaskRelative(state, 'story-a', 'feature', 'inside')).toBe(true)
+    expect(state.tasks['feature'].childIds).toEqual(['story-b', 'story-a'])
+  })
+
+  it('prevents cycles and dropping a task into itself', () => {
+    const state = setup()
+    expect(moveTaskRelative(state, 'feature', 'story-a', 'inside')).toBe(false)
+    expect(moveTaskRelative(state, 'feature', 'feature', 'inside')).toBe(false)
+    expect(moveTaskRelative(state, 'epic', 'story-b', 'before')).toBe(false)
+    expect(state.tasks['feature'].parentId).toBe('epic')
+    expect(state.tasks['story-a'].parentId).toBe('feature')
+  })
+
+  it('expands a collapsed destination parent', () => {
+    const state = setup()
+    state.tasks['other-root'].collapsed = true
+    expect(moveTaskRelative(state, 'story-b', 'other-root', 'inside')).toBe(true)
+    expect(state.tasks['other-root'].collapsed).toBe(false)
   })
 })
 

@@ -9,6 +9,7 @@ import {
   createTaskEntity,
   moveSiblingByOffset,
   moveSiblingRelative,
+  moveTaskRelative,
   removeSubtree,
   restoreSubtree,
   setAllCollapsed,
@@ -17,7 +18,7 @@ import {
   insertTask,
 } from './tree'
 import type { RemovedSubtree } from './tree'
-import type { PlannerState, StatusId, Task, ViewMode } from './types'
+import type { DropPosition, PlannerState, StatusId, Task, ViewMode } from './types'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 
@@ -141,6 +142,16 @@ class PlannerStore {
 
   moveSiblingByOffset(id: string, offset: number): void {
     if (moveSiblingByOffset(this.state, id, offset)) {
+      this.scheduleSave()
+    }
+  }
+
+  moveTaskRelative(
+    draggedId: string,
+    targetId: string,
+    position: DropPosition,
+  ): void {
+    if (moveTaskRelative(this.state, draggedId, targetId, position)) {
       this.scheduleSave()
     }
   }

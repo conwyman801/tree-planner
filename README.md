@@ -1,4 +1,4 @@
-# Recursive Planner
+# Tree Planner
 
 A browser-only planning app with infinite nesting. Every task can contain subtasks, subtasks can contain more subtasks, and parents derive their status from their leaves.
 
@@ -7,7 +7,7 @@ All data is stored in `localStorage`; there is no backend, account, or network r
 ## Features
 
 - **Board view** — Trello-style columns for the six fixed statuses: Backlog, Next Up, In Progress, Blocked, Done, Cancelled. Only leaf tasks appear on the board.
-- **Tree view** — custom SVG tree of every task with parent-child edges, pan/zoom, collapse/expand, and sibling reordering.
+- **Tree view** — custom SVG tree of every task with parent-child edges, pan/zoom, collapse/expand, sibling reordering, and drag-to-reparent.
 - **Derived completion** — a parent is Done when all non-cancelled leaf descendants are Done. Cancelled work is excluded from progress and completion.
 - **Completion rings** — parents show percent complete with colours for not started, in progress, blocked, and done.
 - **Nested creation** — create top-level tasks from the header or a column, and subtasks from any tree node or board card.

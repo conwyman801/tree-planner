@@ -198,7 +198,7 @@
           </li>
         {/each}
       </ul>
-      <p class="reorder-hint">Reorder siblings by dragging them in the tree view.</p>
+      <p class="reorder-hint">Reorder or reparent tasks by dragging their handles in the tree view.</p>
     {/if}
 
     <div class="danger-zone">

@@ -62,7 +62,7 @@
       </svg>
     </div>
     <div class="brand-text">
-      <span class="brand-name">Recursive Planner</span>
+      <span class="brand-name">Tree Planner</span>
       <span class="brand-meta">{taskCount} tasks · local only</span>
     </div>
   </div>

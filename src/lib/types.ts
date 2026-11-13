@@ -8,6 +8,8 @@ export type StatusId =
 
 export type ViewMode = 'board' | 'tree'
 
+export type DropPosition = 'before' | 'after' | 'inside'
+
 export interface Task {
   id: string
   parentId: string | null
