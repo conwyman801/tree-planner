@@ -29,6 +29,17 @@ npm run test       # Vitest domain tests
 npm run build      # static build in dist/
 ```
 
+### GitHub Pages
+
+GitHub Pages project sites are served from `/<repository-name>/`. Build with the
+repository prefix so asset URLs resolve correctly:
+
+```bash
+npm run build:gh-pages   # builds dist/ with base /tree-planner/
+```
+
+Publish the contents of `dist/` using your preferred GitHub Pages workflow.
+
 ## Data model
 
 ```ts
