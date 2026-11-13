@@ -13,10 +13,11 @@ All data is stored in `localStorage`; there is no backend, account, or network r
 - **Nested creation** — create top-level tasks from the header or a column, and subtasks from any tree node or board card.
 - **Local persistence** — debounced autosave, JSON export/import, clear planner, and corrupt-storage recovery.
 - **Keyboard support** — Alt+Up/Down reorders siblings; cards and nodes are keyboard focusable.
+- **Touch and mobile support** — pointer-based dragging for cards and tree handles, one-finger pan, pinch-to-zoom, responsive header/dialog/inspector layouts, and safe-area-aware spacing.
 
 ## Stack
 
-Svelte 5 + Vite + TypeScript, with plain CSS. Dragging uses the native HTML5 drag and drop API, so no runtime UI dependencies are required.
+Svelte 5 + Vite + TypeScript, with plain CSS. Dragging is implemented with Pointer Events (mouse, touch, and pen), so no runtime UI dependencies are required.
 
 ## Development
 

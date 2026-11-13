@@ -71,6 +71,7 @@
     <button
       class:active={planner.state.lastView === 'board'}
       aria-pressed={planner.state.lastView === 'board'}
+      aria-label="Board view"
       onclick={() => planner.setView('board')}
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -78,11 +79,12 @@
         <rect x="6.25" y="2" width="3.5" height="9" rx="1" />
         <rect x="11" y="2" width="3.5" height="6" rx="1" />
       </svg>
-      Board
+      <span class="switch-label">Board</span>
     </button>
     <button
       class:active={planner.state.lastView === 'tree'}
       aria-pressed={planner.state.lastView === 'tree'}
+      aria-label="Tree view"
       onclick={() => planner.setView('tree')}
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -91,7 +93,7 @@
         <circle cx="12.5" cy="12.5" r="1.8" />
         <path d="M4.8 8h2.2V3.5h3.7M7 8v4.5h3.7" />
       </svg>
-      Tree
+      <span class="switch-label">Tree</span>
     </button>
   </nav>
 
@@ -101,9 +103,13 @@
       {saveLabel}
     </span>
 
-    <button class="btn btn-primary" onclick={() => planner.requestNewTask(null)}>
+    <button
+      class="btn btn-primary"
+      aria-label="New task"
+      onclick={() => planner.requestNewTask(null)}
+    >
       <span class="plus" aria-hidden="true">+</span>
-      New task
+      <span class="new-task-label">New task</span>
     </button>
 
     <details class="data-menu" bind:this={dataMenu}>
@@ -221,6 +227,11 @@
     box-shadow: var(--shadow-sm);
   }
 
+  .switch-label,
+  .new-task-label {
+    display: inline;
+  }
+
   .header-actions {
     display: flex;
     align-items: center;
@@ -331,12 +342,32 @@
   }
 
   @media (max-width: 620px) {
+    .app-header {
+      padding: 0 10px;
+    }
+
     .brand-text {
       display: none;
     }
 
     .view-switch button {
       padding: 6px 9px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .switch-label,
+    .new-task-label {
+      display: none;
+    }
+
+    .header-actions {
+      gap: 6px;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
     }
   }
 </style>

@@ -126,6 +126,9 @@
 
   .dialog {
     width: min(480px, 100%);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--surface);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
@@ -183,6 +186,19 @@
   @keyframes fade-in {
     from {
       opacity: 0;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .dialog-backdrop {
+      padding: 12px;
+      align-items: end;
+    }
+
+    .dialog {
+      width: 100%;
+      max-height: calc(100dvh - 24px);
+      border-radius: 16px 16px 12px 12px;
     }
   }
 

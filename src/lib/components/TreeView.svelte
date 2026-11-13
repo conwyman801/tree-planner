@@ -1,9 +1,28 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { computeLayout } from '../layout'
   import { planner } from '../store.svelte'
-  import { computeAggregates, getAncestorIds } from '../tree'
+  import { computeAggregates, getAncestorIds, getBreadcrumb } from '../tree'
+  import { STATUS_BY_ID } from '../statuses'
+  import DragGhost from './DragGhost.svelte'
   import TaskNode from './TaskNode.svelte'
+
+  interface PendingNodeDrag {
+    taskId: string
+    pointerId: number
+    startX: number
+    startY: number
+    active: boolean
+  }
+
+  interface PinchState {
+    startDistance: number
+    startScale: number
+    startTranslateX: number
+    startTranslateY: number
+    startMidX: number
+    startMidY: number
+  }
 
   let viewport: HTMLDivElement
   let layout = $derived(computeLayout(planner.state))
@@ -23,18 +42,52 @@
   let autoFitted = false
 
   let panning = $state(false)
+  let didPan = false
+  let panPointerId: number | null = null
   let panStartX = 0
   let panStartY = 0
   let panStartTranslateX = 0
   let panStartTranslateY = 0
-  let didPan = false
+  const activePointers = new Map<number, { x: number; y: number }>()
+  let pinch: PinchState | null = null
 
   let draggingId = $state<string | null>(null)
   let dropTargetId = $state<string | null>(null)
   let dropPosition = $state<'before' | 'after'>('before')
+  let ghostX = $state(0)
+  let ghostY = $state(0)
+  let pendingNodeDrag: PendingNodeDrag | null = null
+  let removeNodeDragListeners: (() => void) | null = null
+
+  let draggingTask = $derived(draggingId ? planner.state.tasks[draggingId] : undefined)
+  let draggingBreadcrumb = $derived(
+    draggingTask ? getBreadcrumb(planner.state, draggingTask.id).join(' › ') : '',
+  )
+  let ghostMeta = $derived(
+    draggingBreadcrumb ||
+      (draggingTask ? STATUS_BY_ID[draggingTask.status].label : ''),
+  )
 
   function clampScale(value: number): number {
     return Math.max(MIN_SCALE, Math.min(MAX_SCALE, value))
+  }
+
+  function capturePointer(pointerId: number) {
+    try {
+      viewport?.setPointerCapture(pointerId)
+    } catch {
+      // The pointer may already be gone.
+    }
+  }
+
+  function releasePointer(pointerId: number) {
+    try {
+      if (viewport?.hasPointerCapture(pointerId)) {
+        viewport.releasePointerCapture(pointerId)
+      }
+    } catch {
+      // Ignore stale capture state.
+    }
   }
 
   function fitToView() {
@@ -78,27 +131,109 @@
     zoomAt(scale * factor, event.clientX, event.clientY)
   }
 
+  function startPinch() {
+    if (!viewport) return
+    const points = [...activePointers.values()]
+    if (points.length < 2) return
+    const [first, second] = points
+    const rect = viewport.getBoundingClientRect()
+    const distance = Math.max(
+      1,
+      Math.hypot(first.x - second.x, first.y - second.y),
+    )
+    pinch = {
+      startDistance: distance,
+      startScale: scale,
+      startTranslateX: translateX,
+      startTranslateY: translateY,
+      startMidX: (first.x + second.x) / 2 - rect.left,
+      startMidY: (first.y + second.y) / 2 - rect.top,
+    }
+    panning = false
+    panPointerId = null
+    didPan = true
+    for (const pointerId of activePointers.keys()) capturePointer(pointerId)
+  }
+
+  function resumePan(pointerId: number) {
+    const point = activePointers.get(pointerId)
+    if (!point) {
+      panning = false
+      panPointerId = null
+      return
+    }
+    panning = true
+    panPointerId = pointerId
+    panStartX = point.x
+    panStartY = point.y
+    panStartTranslateX = translateX
+    panStartTranslateY = translateY
+    didPan = true
+    capturePointer(pointerId)
+  }
+
   function handlePointerDown(event: PointerEvent) {
-    if (event.button !== 0) return
+    if (!viewport) return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
     const target = event.target as HTMLElement | null
     if (
       target?.closest(
-        '.tree-node, button, a, input, select, textarea, label, summary, [role="button"]',
+        'button, a, input, select, textarea, label, summary, [role="button"]',
       )
     ) {
       return
     }
-    panning = true
-    didPan = false
-    panStartX = event.clientX
-    panStartY = event.clientY
-    panStartTranslateX = translateX
-    panStartTranslateY = translateY
-    viewport.setPointerCapture(event.pointerId)
+
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+
+    if (activePointers.size === 1) {
+      if (target?.closest('.tree-node')) {
+        panning = false
+        panPointerId = null
+        didPan = false
+      } else {
+        panning = true
+        panPointerId = event.pointerId
+        didPan = false
+        panStartX = event.clientX
+        panStartY = event.clientY
+        panStartTranslateX = translateX
+        panStartTranslateY = translateY
+        capturePointer(event.pointerId)
+      }
+    } else if (activePointers.size === 2) {
+      startPinch()
+    }
   }
 
   function handlePointerMove(event: PointerEvent) {
-    if (!panning) return
+    const point = activePointers.get(event.pointerId)
+    if (!point) return
+    point.x = event.clientX
+    point.y = event.clientY
+
+    if (pinch && activePointers.size >= 2) {
+      if (!viewport) return
+      const [first, second] = [...activePointers.values()]
+      const rect = viewport.getBoundingClientRect()
+      const distance = Math.max(
+        1,
+        Math.hypot(first.x - second.x, first.y - second.y),
+      )
+      const nextScale = clampScale(
+        pinch.startScale * (distance / pinch.startDistance),
+      )
+      const midX = (first.x + second.x) / 2 - rect.left
+      const midY = (first.y + second.y) / 2 - rect.top
+      const worldX = (pinch.startMidX - pinch.startTranslateX) / pinch.startScale
+      const worldY = (pinch.startMidY - pinch.startTranslateY) / pinch.startScale
+      scale = nextScale
+      translateX = midX - worldX * nextScale
+      translateY = midY - worldY * nextScale
+      return
+    }
+
+    if (!panning || event.pointerId !== panPointerId) return
     const deltaX = event.clientX - panStartX
     const deltaY = event.clientY - panStartY
     if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) didPan = true
@@ -107,46 +242,163 @@
   }
 
   function handlePointerUp(event: PointerEvent) {
-    if (!panning) return
+    if (!activePointers.has(event.pointerId)) return
+    releasePointer(event.pointerId)
+    activePointers.delete(event.pointerId)
+
+    if (pinch) {
+      if (activePointers.size < 2) {
+        pinch = null
+        if (activePointers.size === 1) {
+          resumePan([...activePointers.keys()][0])
+        } else {
+          panning = false
+          panPointerId = null
+        }
+      }
+      return
+    }
+
+    if (!panning || event.pointerId !== panPointerId) return
     panning = false
-    viewport.releasePointerCapture(event.pointerId)
+    panPointerId = null
     if (!didPan) planner.selectTask(null)
   }
 
-  function startDrag(taskId: string, event: DragEvent) {
-    draggingId = taskId
-    if (event.dataTransfer) {
-      event.dataTransfer.setData('text/plain', taskId)
-      event.dataTransfer.effectAllowed = 'move'
+  function handlePointerCancel(event: PointerEvent) {
+    if (!activePointers.has(event.pointerId)) return
+    releasePointer(event.pointerId)
+    activePointers.delete(event.pointerId)
+    if (activePointers.size < 2) pinch = null
+    if (event.pointerId === panPointerId) {
+      panning = false
+      panPointerId = null
     }
   }
 
-  function dragOverNode(event: DragEvent, targetId: string) {
-    if (!draggingId || draggingId === targetId) return
+  function nodeAtPoint(
+    clientX: number,
+    clientY: number,
+  ): { id: string; element: HTMLElement } | null {
+    const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null
+    const nodeElement = element?.closest<HTMLElement>('.tree-node[data-task-id]')
+    const id = nodeElement?.dataset.taskId
+    return nodeElement && id ? { id, element: nodeElement } : null
+  }
+
+  function dropPositionFor(element: HTMLElement, clientY: number): 'before' | 'after' {
+    const rect = element.getBoundingClientRect()
+    return clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+  }
+
+  function autoPanTree(clientX: number, clientY: number) {
+    if (!viewport) return
+    const rect = viewport.getBoundingClientRect()
+    const edge = 54
+    const step = 12
+    if (clientX < rect.left + edge) translateX += step
+    else if (clientX > rect.right - edge) translateX -= step
+    if (clientY < rect.top + edge) translateY += step
+    else if (clientY > rect.bottom - edge) translateY -= step
+  }
+
+  function updateNodeDropTarget(clientX: number, clientY: number) {
+    if (!draggingId) return
+    const hit = nodeAtPoint(clientX, clientY)
+    if (!hit || hit.id === draggingId) {
+      dropTargetId = null
+      return
+    }
     const dragged = planner.state.tasks[draggingId]
-    const target = planner.state.tasks[targetId]
+    const target = planner.state.tasks[hit.id]
     if (!dragged || !target || dragged.parentId !== target.parentId) {
       dropTargetId = null
       return
     }
-    event.preventDefault()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    dropPosition = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
-    dropTargetId = targetId
+    dropPosition = dropPositionFor(hit.element, clientY)
+    dropTargetId = hit.id
   }
 
-  function dropOnNode(event: DragEvent, targetId: string) {
-    event.preventDefault()
-    if (draggingId && dropTargetId && draggingId !== targetId) {
-      planner.moveSiblingRelative(draggingId, targetId, dropPosition)
-    }
-    endDrag()
+  function removeNodeDragWindowListeners() {
+    removeNodeDragListeners?.()
+    removeNodeDragListeners = null
   }
 
-  function endDrag() {
+  function resetNodeDrag() {
+    removeNodeDragWindowListeners()
+    pendingNodeDrag = null
     draggingId = null
     dropTargetId = null
+  }
+
+  function beginNodeDrag(taskId: string, event: PointerEvent) {
+    if (event.button !== 0) return
+    event.preventDefault()
+    resetNodeDrag()
+    pendingNodeDrag = {
+      taskId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+    }
+    ghostX = event.clientX
+    ghostY = event.clientY
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      if (!pendingNodeDrag || moveEvent.pointerId !== pendingNodeDrag.pointerId) return
+      const deltaX = moveEvent.clientX - pendingNodeDrag.startX
+      const deltaY = moveEvent.clientY - pendingNodeDrag.startY
+
+      if (!pendingNodeDrag.active) {
+        if (Math.hypot(deltaX, deltaY) < 4) return
+        pendingNodeDrag.active = true
+        draggingId = pendingNodeDrag.taskId
+      }
+
+      moveEvent.preventDefault()
+      ghostX = moveEvent.clientX
+      ghostY = moveEvent.clientY
+      autoPanTree(moveEvent.clientX, moveEvent.clientY)
+      updateNodeDropTarget(moveEvent.clientX, moveEvent.clientY)
+    }
+
+    const handleUp = (upEvent: PointerEvent) => {
+      if (!pendingNodeDrag || upEvent.pointerId !== pendingNodeDrag.pointerId) return
+      if (pendingNodeDrag.active) {
+        const taskIdToMove = pendingNodeDrag.taskId
+        const hit = nodeAtPoint(upEvent.clientX, upEvent.clientY)
+        if (hit && hit.id !== taskIdToMove) {
+          const dragged = planner.state.tasks[taskIdToMove]
+          const target = planner.state.tasks[hit.id]
+          if (dragged && target && dragged.parentId === target.parentId) {
+            planner.moveSiblingRelative(
+              taskIdToMove,
+              hit.id,
+              dropPositionFor(hit.element, upEvent.clientY),
+            )
+          }
+        }
+      }
+      resetNodeDrag()
+    }
+
+    const handleCancel = (cancelEvent: PointerEvent) => {
+      if (!pendingNodeDrag || cancelEvent.pointerId !== pendingNodeDrag.pointerId) return
+      resetNodeDrag()
+    }
+    const handleBlur = () => resetNodeDrag()
+
+    window.addEventListener('pointermove', handleMove, { passive: false })
+    window.addEventListener('pointerup', handleUp)
+    window.addEventListener('pointercancel', handleCancel)
+    window.addEventListener('blur', handleBlur)
+    removeNodeDragListeners = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleCancel)
+      window.removeEventListener('blur', handleBlur)
+    }
   }
 
   $effect(() => {
@@ -157,6 +409,10 @@
 
   onMount(() => {
     requestAnimationFrame(() => fitToView())
+  })
+
+  onDestroy(() => {
+    removeNodeDragWindowListeners()
   })
 </script>
 
@@ -169,6 +425,7 @@
     onpointerdown={handlePointerDown}
     onpointermove={handlePointerMove}
     onpointerup={handlePointerUp}
+    onpointercancel={handlePointerCancel}
     role="tree"
     aria-label="Task hierarchy"
     tabindex="-1"
@@ -196,19 +453,11 @@
       {#each layout.nodes as node (node.id)}
         <div
           class="tree-node"
-          role="none"
+          data-task-id={node.id}
           class:dragging={draggingId === node.id}
           class:drop-before={dropTargetId === node.id && dropPosition === 'before'}
           class:drop-after={dropTargetId === node.id && dropPosition === 'after'}
           style="left: {node.x}px; top: {node.y}px; width: {node.width}px; height: {node.height}px;"
-          ondragover={(event) => dragOverNode(event, node.id)}
-          ondragleave={(event) => {
-            const related = event.relatedTarget as Node | null
-            if (related && (event.currentTarget as HTMLElement).contains(related)) return
-            if (dropTargetId === node.id) dropTargetId = null
-          }}
-          ondrop={(event) => dropOnNode(event, node.id)}
-          ondragend={endDrag}
         >
           <TaskNode
             task={planner.state.tasks[node.id]}
@@ -218,7 +467,7 @@
             onSelect={() => planner.selectTask(node.id)}
             onAddChild={() => planner.requestNewTask(node.id)}
             onToggleCollapse={() => planner.toggleTaskCollapse(node.id)}
-            onDragStart={(event) => startDrag(node.id, event)}
+            onDragHandlePointerDown={(event) => beginNodeDrag(node.id, event)}
             onMoveUp={() => planner.moveSiblingByOffset(node.id, -1)}
             onMoveDown={() => planner.moveSiblingByOffset(node.id, 1)}
             onStatusChange={(status) => planner.setStatus(node.id, status)}
@@ -255,8 +504,17 @@
     <button class="btn btn-ghost" onclick={() => planner.collapseAll()}>Collapse all</button>
   </div>
 
-  <div class="tree-hint">Drag the canvas to pan · Scroll to zoom · Alt+↑/↓ to reorder siblings</div>
+  <div class="tree-hint desktop-hint">
+    Drag the canvas to pan · Scroll to zoom · Alt+↑/↓ to reorder siblings
+  </div>
+  <div class="tree-hint touch-hint">
+    Drag the canvas to pan · Pinch to zoom · Use the grip to reorder
+  </div>
 </div>
+
+{#if draggingTask}
+  <DragGhost x={ghostX} y={ghostY} title={draggingTask.title} meta={ghostMeta} />
+{/if}
 
 <style>
   .tree-view {
@@ -387,6 +645,10 @@
     pointer-events: none;
   }
 
+  .touch-hint {
+    display: none;
+  }
+
   .empty-state {
     position: absolute;
     inset: 0;
@@ -427,14 +689,29 @@
     border-radius: 14px;
   }
 
+  @media (any-pointer: coarse) {
+    .desktop-hint {
+      display: none;
+    }
+
+    .touch-hint {
+      display: block;
+    }
+  }
+
   @media (max-width: 760px) {
-    .tree-hint {
+    .desktop-hint {
       display: none;
     }
 
     .tree-toolbar {
       max-width: calc(100% - 24px);
       overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .tree-toolbar::-webkit-scrollbar {
+      display: none;
     }
   }
 </style>

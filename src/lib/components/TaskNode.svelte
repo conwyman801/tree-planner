@@ -11,7 +11,7 @@
     onSelect: () => void
     onAddChild: () => void
     onToggleCollapse: () => void
-    onDragStart: (event: DragEvent) => void
+    onDragHandlePointerDown: (event: PointerEvent) => void
     onMoveUp: () => void
     onMoveDown: () => void
     onStatusChange: (status: StatusId) => void
@@ -25,7 +25,7 @@
     onSelect,
     onAddChild,
     onToggleCollapse,
-    onDragStart,
+    onDragHandlePointerDown,
     onMoveUp,
     onMoveDown,
     onStatusChange,
@@ -70,10 +70,12 @@
   <div class="node-top">
     <span
       class="drag-handle"
-      draggable="true"
       title="Drag to reorder among siblings (Alt+↑/↓ also works)"
       aria-hidden="true"
-      ondragstart={(event) => onDragStart(event)}
+      onpointerdown={(event) => {
+        event.stopPropagation()
+        onDragHandlePointerDown(event)
+      }}
       onclick={(event) => event.stopPropagation()}
     >
       <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
@@ -173,6 +175,7 @@
       box-shadow 120ms ease,
       transform 120ms ease;
     user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .task-node:hover {
@@ -211,6 +214,9 @@
     cursor: grab;
     border-radius: 4px;
     flex: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .drag-handle:hover {
@@ -326,5 +332,17 @@
 
   .status-select:hover {
     filter: brightness(0.97);
+  }
+
+  @media (any-pointer: coarse) {
+    .drag-handle {
+      width: 24px;
+      height: 32px;
+    }
+
+    .node-actions .icon-btn {
+      width: 32px;
+      height: 32px;
+    }
   }
 </style>

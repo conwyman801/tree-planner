@@ -1,60 +1,163 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import { planner } from '../store.svelte'
   import { groupLeavesByStatus } from '../tree'
-  import { STATUSES } from '../statuses'
+  import { STATUSES, STATUS_BY_ID } from '../statuses'
   import type { StatusId } from '../types'
+  import DragGhost from './DragGhost.svelte'
   import TaskCard from './TaskCard.svelte'
+
+  interface PendingDrag {
+    taskId: string
+    pointerId: number
+    startX: number
+    startY: number
+    active: boolean
+  }
 
   let columns = $derived(groupLeavesByStatus(planner.state))
   let draggingId = $state<string | null>(null)
   let dragOverStatus = $state<StatusId | null>(null)
+  let ghostX = $state(0)
+  let ghostY = $state(0)
+  let draggingTask = $derived(draggingId ? planner.state.tasks[draggingId] : undefined)
+  let ghostMeta = $derived(
+    draggingTask ? `${STATUS_BY_ID[draggingTask.status].label} · leaf task` : '',
+  )
 
-  function startDrag(taskId: string, event: DragEvent) {
-    draggingId = taskId
-    if (event.dataTransfer) {
-      event.dataTransfer.setData('text/plain', taskId)
-      event.dataTransfer.effectAllowed = 'move'
+  let boardScroll: HTMLDivElement
+  let pendingDrag: PendingDrag | null = null
+  let removeDragListeners: (() => void) | null = null
+  let suppressClickUntil = 0
+  let suppressClickTaskId: string | null = null
+
+  function statusAtPoint(clientX: number, clientY: number): StatusId | null {
+    const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null
+    const column = element?.closest<HTMLElement>('[data-status]')
+    const status = column?.dataset.status
+    return STATUSES.some((entry) => entry.id === status) ? (status as StatusId) : null
+  }
+
+  function autoScrollBoard(clientX: number) {
+    if (!boardScroll) return
+    const rect = boardScroll.getBoundingClientRect()
+    const edge = 56
+    const step = 22
+    if (clientX < rect.left + edge) {
+      const strength = Math.min(1, (rect.left + edge - clientX) / edge)
+      boardScroll.scrollLeft -= Math.ceil(step * strength)
+    } else if (clientX > rect.right - edge) {
+      const strength = Math.min(1, (clientX - (rect.right - edge)) / edge)
+      boardScroll.scrollLeft += Math.ceil(step * strength)
     }
   }
 
-  function endDrag() {
+  function updateDragTarget(clientX: number, clientY: number) {
+    autoScrollBoard(clientX)
+    dragOverStatus = statusAtPoint(clientX, clientY)
+  }
+
+  function removeListeners() {
+    removeDragListeners?.()
+    removeDragListeners = null
+  }
+
+  function resetDrag() {
+    removeListeners()
+    pendingDrag = null
     draggingId = null
     dragOverStatus = null
   }
 
-  function dragOverColumn(event: DragEvent, status: StatusId) {
-    if (!draggingId) return
-    event.preventDefault()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-    dragOverStatus = status
+  function beginCardDrag(taskId: string, event: PointerEvent) {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement | null
+    if (event.pointerType === 'touch' && !target?.closest('.card-drag')) return
+    if (!planner.state.tasks[taskId]) return
+
+    resetDrag()
+    pendingDrag = {
+      taskId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+    }
+    ghostX = event.clientX
+    ghostY = event.clientY
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      if (!pendingDrag || moveEvent.pointerId !== pendingDrag.pointerId) return
+      const deltaX = moveEvent.clientX - pendingDrag.startX
+      const deltaY = moveEvent.clientY - pendingDrag.startY
+
+      if (!pendingDrag.active) {
+        if (Math.hypot(deltaX, deltaY) < 6) return
+        pendingDrag.active = true
+        draggingId = pendingDrag.taskId
+      }
+
+      moveEvent.preventDefault()
+      ghostX = moveEvent.clientX
+      ghostY = moveEvent.clientY
+      updateDragTarget(moveEvent.clientX, moveEvent.clientY)
+    }
+
+    const handleUp = (upEvent: PointerEvent) => {
+      if (!pendingDrag || upEvent.pointerId !== pendingDrag.pointerId) return
+      const active = pendingDrag.active
+      const taskIdToMove = pendingDrag.taskId
+      if (active) {
+        const status = statusAtPoint(upEvent.clientX, upEvent.clientY)
+        if (status) planner.setStatus(taskIdToMove, status)
+        suppressClickTaskId = taskIdToMove
+        suppressClickUntil = Date.now() + 500
+      }
+      resetDrag()
+    }
+
+    const handleCancel = (cancelEvent: PointerEvent) => {
+      if (!pendingDrag || cancelEvent.pointerId !== pendingDrag.pointerId) return
+      resetDrag()
+    }
+    const handleBlur = () => resetDrag()
+
+    window.addEventListener('pointermove', handleMove, { passive: false })
+    window.addEventListener('pointerup', handleUp)
+    window.addEventListener('pointercancel', handleCancel)
+    window.addEventListener('blur', handleBlur)
+    removeDragListeners = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleCancel)
+      window.removeEventListener('blur', handleBlur)
+    }
   }
 
-  function dragLeaveColumn(event: DragEvent, status: StatusId) {
-    const target = event.currentTarget as HTMLElement
-    const related = event.relatedTarget as Node | null
-    if (related && target.contains(related)) return
-    if (dragOverStatus === status) dragOverStatus = null
+  function selectCard(taskId: string) {
+    if (
+      suppressClickTaskId === taskId &&
+      Date.now() < suppressClickUntil
+    ) {
+      return
+    }
+    planner.selectTask(taskId)
   }
 
-  function dropOnColumn(event: DragEvent, status: StatusId) {
-    event.preventDefault()
-    const taskId = event.dataTransfer?.getData('text/plain') || draggingId
-    if (taskId) planner.setStatus(taskId, status)
-    endDrag()
-  }
+  onDestroy(() => {
+    removeListeners()
+  })
 </script>
 
 <div class="board-view">
-  <div class="board-scroll">
+  <div class="board-scroll" bind:this={boardScroll}>
     {#each STATUSES as status (status.id)}
       <section
         class="board-column"
         class:drag-over={dragOverStatus === status.id}
+        data-status={status.id}
         style="--column-color: {status.color}; --column-soft: {status.soft}; --column-text: {status.text}"
         aria-label={`${status.label} column`}
-        ondragover={(event) => dragOverColumn(event, status.id)}
-        ondragleave={(event) => dragLeaveColumn(event, status.id)}
-        ondrop={(event) => dropOnColumn(event, status.id)}
       >
         <header class="column-header">
           <div class="column-title">
@@ -77,10 +180,9 @@
             <TaskCard
               {task}
               dragging={draggingId === task.id}
-              onSelect={() => planner.selectTask(task.id)}
+              onSelect={() => selectCard(task.id)}
               onAddSubtask={() => planner.requestNewTask(task.id)}
-              onDragStart={(event) => startDrag(task.id, event)}
-              onDragEnd={endDrag}
+              onPointerDown={(event) => beginCardDrag(task.id, event)}
             />
           {/each}
 
@@ -97,9 +199,14 @@
   </div>
 
   <div class="board-note">
-    Only leaf tasks appear on the board. Add a subtask from a card to grow a tree.
+    Drag cards between columns. Only leaf tasks appear on the board; add a subtask from a
+    card to grow a tree.
   </div>
 </div>
+
+{#if draggingTask}
+  <DragGhost x={ghostX} y={ghostY} title={draggingTask.title} meta={ghostMeta} />
+{/if}
 
 <style>
   .board-view {
@@ -119,6 +226,9 @@
     overflow-y: hidden;
     padding: 20px 24px 16px;
     scrollbar-color: #cbd5e1 transparent;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
   }
 
   .board-column {
@@ -134,6 +244,7 @@
       border-color 120ms ease,
       background 120ms ease;
     min-height: 120px;
+    scroll-snap-align: start;
   }
 
   .board-column.drag-over {
@@ -205,6 +316,7 @@
     overflow-y: auto;
     min-height: 86px;
     scrollbar-color: #cbd5e1 transparent;
+    overscroll-behavior-y: contain;
   }
 
   .column-empty {
@@ -245,6 +357,12 @@
 
     .board-note {
       display: none;
+    }
+  }
+
+  @media (any-pointer: coarse) {
+    .board-scroll {
+      scroll-snap-type: none;
     }
   }
 </style>

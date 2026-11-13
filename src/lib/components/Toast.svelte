@@ -25,7 +25,7 @@
 <style>
   .toast {
     position: fixed;
-    bottom: 22px;
+    bottom: calc(22px + env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     z-index: 90;

@@ -234,8 +234,9 @@
     background: var(--surface);
     border-left: 1px solid var(--border);
     box-shadow: -16px 0 40px rgba(15, 23, 42, 0.12);
-    padding: 16px 18px 24px;
+    padding: 16px 18px calc(24px + env(safe-area-inset-bottom));
     overflow-y: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 13px;
@@ -541,6 +542,11 @@
     .inspector {
       width: 100%;
       top: 58px;
+      padding: 14px 14px calc(22px + env(safe-area-inset-bottom));
+    }
+
+    .title-input {
+      font-size: 19px;
     }
   }
 </style>

@@ -8,11 +8,10 @@
     dragging: boolean
     onSelect: () => void
     onAddSubtask: () => void
-    onDragStart: (event: DragEvent) => void
-    onDragEnd: () => void
+    onPointerDown: (event: PointerEvent) => void
   }
 
-  let { task, dragging, onSelect, onAddSubtask, onDragStart, onDragEnd }: Props = $props()
+  let { task, dragging, onSelect, onAddSubtask, onPointerDown }: Props = $props()
 
   let breadcrumb = $derived(getBreadcrumb(planner.state, task.id))
 </script>
@@ -21,10 +20,8 @@
   class="task-card"
   role="button"
   class:dragging
-  draggable="true"
   onclick={onSelect}
-  ondragstart={onDragStart}
-  ondragend={onDragEnd}
+  onpointerdown={(event) => onPointerDown(event)}
   onkeydown={(event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
@@ -42,6 +39,16 @@
 
   <div class="card-main">
     <div class="card-title">{task.title}</div>
+    <span class="card-drag" title="Drag to move" aria-hidden="true">
+      <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+        <circle cx="2.5" cy="3" r="1.15" />
+        <circle cx="7.5" cy="3" r="1.15" />
+        <circle cx="2.5" cy="7" r="1.15" />
+        <circle cx="7.5" cy="7" r="1.15" />
+        <circle cx="2.5" cy="11" r="1.15" />
+        <circle cx="7.5" cy="11" r="1.15" />
+      </svg>
+    </span>
     <button
       class="icon-btn card-add"
       title="Add subtask"
@@ -73,6 +80,7 @@
       box-shadow 120ms ease,
       transform 120ms ease;
     user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .task-card:hover {
@@ -115,24 +123,58 @@
     word-break: break-word;
   }
 
-  .card-add {
+  .card-add,
+  .card-drag {
     width: 22px;
     height: 22px;
     margin-top: -2px;
     opacity: 0;
-    font-size: 15px;
-    font-weight: 600;
     transition: opacity 120ms ease;
   }
 
+  .card-add {
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .card-drag {
+    display: inline-flex;
+    -webkit-touch-callout: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-faint);
+    cursor: grab;
+    border-radius: 5px;
+    touch-action: none;
+  }
+
+  .card-drag:hover {
+    background: var(--surface-muted);
+    color: var(--text-muted);
+  }
+
+  .card-drag:active {
+    cursor: grabbing;
+  }
+
   .task-card:hover .card-add,
-  .task-card:focus-within .card-add {
+  .task-card:hover .card-drag,
+  .task-card:focus-within .card-add,
+  .task-card:focus-within .card-drag {
     opacity: 1;
   }
 
-  @media (pointer: coarse) {
-    .card-add {
+  @media (any-pointer: coarse) {
+    .card-add,
+    .card-drag {
       opacity: 1;
+      width: 30px;
+      height: 30px;
+      margin-top: -4px;
+    }
+
+    .card-add {
+      font-size: 18px;
     }
   }
 
