@@ -430,6 +430,12 @@
 
 <div class="tree-view">
   <div
+    class="tree-background"
+    style="background-size: {24 * scale}px {24 * scale}px; background-position: {translateX}px {translateY}px;"
+    aria-hidden="true"
+  ></div>
+
+  <div
     class="tree-viewport"
     class:panning
     bind:this={viewport}
@@ -534,9 +540,16 @@
     position: relative;
     height: 100%;
     overflow: hidden;
-    background:
-      radial-gradient(circle at 1px 1px, #cfd8e3 1px, transparent 0) 0 0 / 24px 24px,
-      #f7f9fc;
+    background: #f7f9fc;
+  }
+
+  .tree-background {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, #cfd8e3 1px, transparent 0);
+    background-repeat: repeat;
+    pointer-events: none;
+    will-change: background-position, background-size;
   }
 
   .tree-viewport {
