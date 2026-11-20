@@ -38,6 +38,8 @@
   const MAX_SCALE = 2.4
   const BASE_DOT_GRID = 24
   const TARGET_DOT_SPACING = 26
+  const DOT_FIELD_INSET = 10000
+  const DOT_OFFSET = BASE_DOT_GRID / 6
 
   let translateX = $state(0)
   let translateY = $state(0)
@@ -48,11 +50,11 @@
     const level = Math.log2(TARGET_DOT_SPACING / (BASE_DOT_GRID * scale))
     const base = Math.floor(level)
     const blend = level - base
-    const fine = BASE_DOT_GRID * scale * Math.pow(2, base)
+    const fine = BASE_DOT_GRID * Math.pow(2, base)
     const coarse = fine * 2
     return [
-      { size: fine, opacity: 1 - blend },
-      { size: coarse, opacity: blend },
+      { size: fine, radius: fine / BASE_DOT_GRID, opacity: 1 - blend },
+      { size: coarse, radius: coarse / BASE_DOT_GRID, opacity: blend },
     ]
   })
 
@@ -443,15 +445,6 @@
 </script>
 
 <div class="tree-view">
-  <div class="tree-background" aria-hidden="true">
-    {#each dotLayers as layer}
-      <div
-        class="dot-layer"
-        style="background-size: {layer.size}px {layer.size}px; background-position: {translateX}px {translateY}px; opacity: {layer.opacity};"
-      ></div>
-    {/each}
-  </div>
-
   <div
     class="tree-viewport"
     class:panning
@@ -469,6 +462,19 @@
       class="tree-world"
       style="width: {layout.width}px; height: {layout.height}px; transform: translate({translateX}px, {translateY}px) scale({scale});"
     >
+      <div
+        class="dot-field"
+        style="inset: -{DOT_FIELD_INSET}px;"
+        aria-hidden="true"
+      >
+        {#each dotLayers as layer}
+          <div
+            class="dot-layer"
+            style="background-size: {layer.size}px {layer.size}px; background-position: {DOT_FIELD_INSET}px {DOT_FIELD_INSET}px; background-image: radial-gradient(circle at {DOT_OFFSET}px {DOT_OFFSET}px, #cfd8e3 {layer.radius}px, transparent 0); opacity: {layer.opacity};"
+          ></div>
+        {/each}
+      </div>
+
       <svg
         class="edge-layer"
         width={layout.width}
@@ -560,18 +566,15 @@
     background: #f7f9fc;
   }
 
-  .tree-background {
+  .dot-field {
     position: absolute;
-    inset: 0;
     pointer-events: none;
   }
 
   .dot-layer {
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(circle at 1px 1px, #cfd8e3 1px, transparent 0);
     background-repeat: repeat;
-    will-change: background-position, background-size;
   }
 
   .tree-viewport {
