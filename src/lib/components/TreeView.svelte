@@ -44,14 +44,17 @@
   let scale = $state(1)
   let autoFitted = false
 
-  let dotSpacing = $derived(
-    BASE_DOT_GRID *
-      scale *
-      Math.pow(
-        2,
-        Math.round(Math.log2(TARGET_DOT_SPACING / (BASE_DOT_GRID * scale))),
-      ),
-  )
+  let dotLayers = $derived.by(() => {
+    const level = Math.log2(TARGET_DOT_SPACING / (BASE_DOT_GRID * scale))
+    const base = Math.floor(level)
+    const blend = level - base
+    const fine = BASE_DOT_GRID * scale * Math.pow(2, base)
+    const coarse = fine * 2
+    return [
+      { size: fine, opacity: 1 - blend },
+      { size: coarse, opacity: blend },
+    ]
+  })
 
   let panning = $state(false)
   let didPan = false
@@ -440,11 +443,14 @@
 </script>
 
 <div class="tree-view">
-  <div
-    class="tree-background"
-    style="background-size: {dotSpacing}px {dotSpacing}px; background-position: {translateX}px {translateY}px;"
-    aria-hidden="true"
-  ></div>
+  <div class="tree-background" aria-hidden="true">
+    {#each dotLayers as layer}
+      <div
+        class="dot-layer"
+        style="background-size: {layer.size}px {layer.size}px; background-position: {translateX}px {translateY}px; opacity: {layer.opacity};"
+      ></div>
+    {/each}
+  </div>
 
   <div
     class="tree-viewport"
@@ -557,9 +563,14 @@
   .tree-background {
     position: absolute;
     inset: 0;
+    pointer-events: none;
+  }
+
+  .dot-layer {
+    position: absolute;
+    inset: 0;
     background-image: radial-gradient(circle at 1px 1px, #cfd8e3 1px, transparent 0);
     background-repeat: repeat;
-    pointer-events: none;
     will-change: background-position, background-size;
   }
 
