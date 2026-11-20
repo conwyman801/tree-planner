@@ -36,11 +36,22 @@
 
   const MIN_SCALE = 0.2
   const MAX_SCALE = 2.4
+  const BASE_DOT_GRID = 24
+  const TARGET_DOT_SPACING = 26
 
   let translateX = $state(0)
   let translateY = $state(0)
   let scale = $state(1)
   let autoFitted = false
+
+  let dotSpacing = $derived(
+    BASE_DOT_GRID *
+      scale *
+      Math.pow(
+        2,
+        Math.round(Math.log2(TARGET_DOT_SPACING / (BASE_DOT_GRID * scale))),
+      ),
+  )
 
   let panning = $state(false)
   let didPan = false
@@ -431,7 +442,7 @@
 <div class="tree-view">
   <div
     class="tree-background"
-    style="background-size: {24 * scale}px {24 * scale}px; background-position: {translateX}px {translateY}px;"
+    style="background-size: {dotSpacing}px {dotSpacing}px; background-position: {translateX}px {translateY}px;"
     aria-hidden="true"
   ></div>
 
