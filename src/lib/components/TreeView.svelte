@@ -38,24 +38,35 @@
   const MAX_SCALE = 2.4
   const BASE_DOT_GRID = 24
   const TARGET_DOT_SPACING = 26
-  const DOT_FIELD_INSET = 10000
-  const DOT_OFFSET = BASE_DOT_GRID / 6
+  const DOT_FIELD_RADIUS = 3500
 
   let translateX = $state(0)
   let translateY = $state(0)
   let scale = $state(1)
+  let viewportWidth = $state(0)
+  let viewportHeight = $state(0)
   let autoFitted = false
+
+  function wrapAroundCenter(value: number, period: number, center: number) {
+    return center + (((value - center) % period) + period) % period
+  }
 
   let dotLayers = $derived.by(() => {
     const level = Math.log2(TARGET_DOT_SPACING / (BASE_DOT_GRID * scale))
     const base = Math.floor(level)
     const blend = level - base
-    const fine = BASE_DOT_GRID * Math.pow(2, base)
-    const coarse = fine * 2
+    const fineScale = Math.pow(2, -blend)
     return [
-      { size: fine, radius: fine / BASE_DOT_GRID, opacity: 1 - blend },
-      { size: coarse, radius: coarse / BASE_DOT_GRID, opacity: blend },
-    ]
+      { scale: fineScale, opacity: 1 - blend },
+      { scale: fineScale * 2, opacity: blend },
+    ].map((layer) => {
+      const period = layer.scale * TARGET_DOT_SPACING
+      return {
+        ...layer,
+        x: wrapAroundCenter(translateX, period, viewportWidth / 2),
+        y: wrapAroundCenter(translateY, period, viewportHeight / 2),
+      }
+    })
   })
 
   let panning = $state(false)
@@ -449,6 +460,8 @@
     class="tree-viewport"
     class:panning
     bind:this={viewport}
+    bind:clientWidth={viewportWidth}
+    bind:clientHeight={viewportHeight}
     onwheel={handleWheel}
     onpointerdown={handlePointerDown}
     onpointermove={handlePointerMove}
@@ -459,22 +472,22 @@
     tabindex="-1"
   >
     <div
+      class="dot-overlay"
+      style="--dot-field-radius: {DOT_FIELD_RADIUS}px; --dot-spacing: {TARGET_DOT_SPACING}px;"
+      aria-hidden="true"
+    >
+      {#each dotLayers as layer}
+        <div
+          class="dot-layer"
+          style="transform-origin: {DOT_FIELD_RADIUS}px {DOT_FIELD_RADIUS}px; transform: translate({layer.x}px, {layer.y}px) scale({layer.scale}); opacity: {layer.opacity};"
+        ></div>
+      {/each}
+    </div>
+
+    <div
       class="tree-world"
       style="width: {layout.width}px; height: {layout.height}px; transform: translate({translateX}px, {translateY}px) scale({scale});"
     >
-      <div
-        class="dot-field"
-        style="inset: -{DOT_FIELD_INSET}px;"
-        aria-hidden="true"
-      >
-        {#each dotLayers as layer}
-          <div
-            class="dot-layer"
-            style="background-size: {layer.size}px {layer.size}px; background-position: {DOT_FIELD_INSET}px {DOT_FIELD_INSET}px; background-image: radial-gradient(circle at {DOT_OFFSET}px {DOT_OFFSET}px, #cfd8e3 {layer.radius}px, transparent 0); opacity: {layer.opacity};"
-          ></div>
-        {/each}
-      </div>
-
       <svg
         class="edge-layer"
         width={layout.width}
@@ -566,14 +579,23 @@
     background: #f7f9fc;
   }
 
-  .dot-field {
+  .dot-overlay {
     position: absolute;
+    inset: 0;
+    overflow: hidden;
     pointer-events: none;
   }
 
   .dot-layer {
     position: absolute;
-    inset: 0;
+    left: calc(-1 * var(--dot-field-radius));
+    top: calc(-1 * var(--dot-field-radius));
+    width: calc(2 * var(--dot-field-radius));
+    height: calc(2 * var(--dot-field-radius));
+    background-image: radial-gradient(circle at 1px 1px, #cfd8e3 1px, transparent 0);
+    background-size: var(--dot-spacing) var(--dot-spacing);
+    background-position: calc(var(--dot-field-radius) - 1px)
+      calc(var(--dot-field-radius) - 1px);
     background-repeat: repeat;
   }
 
